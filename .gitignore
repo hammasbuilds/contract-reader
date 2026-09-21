@@ -1,0 +1,10 @@
+# CUAD is 43 MB and is a published dataset. scripts/fetch_data.sh pulls it.
+data/cuad.json
+data/master_clauses.csv
+
+# Everything else
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
