@@ -27,9 +27,17 @@ is not in that contract. That 68% is not a quirk of the sampling — it is asser
 really is a substring of its own contract.
 
 ```
+python scripts/fetch_data.py  # rebuild data/cuad.json (38 MB, not in git)
 python scripts/measure.py     # prints every table below
-python -m pytest              # 23 tests, against the real 40 MB corpus
+python -m pytest              # 23 tests, against the real corpus
 ```
+
+CUAD's canonical `data.zip` now 404s behind an organisation rename, so the fetch rebuilds
+the corpus from HuggingFace's parquet conversion. The two splits are not shaped alike —
+`test` carries whole contracts, `train` is chunked and augmented — so the script
+deduplicates to one entry per (contract, category) against the longest context. It verifies
+it produced 510 × 41 = 20,910 questions and **refuses to write** anything else, because a
+fetch that quietly produces a different corpus invalidates every number below.
 
 ## Finding 1 — two scores that are not about reading contracts
 

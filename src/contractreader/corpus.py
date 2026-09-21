@@ -74,8 +74,8 @@ def load(path: str | None = None) -> tuple[Question, ...]:
     target = Path(path) if path else CUAD
     if not target.exists():
         raise CorpusMissingError(
-            f"{target} is missing. Run scripts/fetch_data.sh, which pulls CUAD "
-            "from the HuggingFace mirror in byte ranges."
+            f"{target} is missing. Run scripts/fetch_data.py, which rebuilds it "
+            "from the HuggingFace parquet conversion."
         )
     raw = json.loads(target.read_text(encoding="utf-8"))
 
