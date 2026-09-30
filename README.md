@@ -39,7 +39,7 @@ deduplicates to one entry per (contract, category) against the longest context. 
 it produced 510 × 41 = 20,910 questions and **refuses to write** anything else, because a
 fetch that quietly produces a different corpus invalidates every number below.
 
-## Finding 1 — two scores that are not about reading contracts
+## Result 1 — two scores that are not about reading contracts
 
 | Strategy | Accuracy |
 |---|---:|
@@ -49,7 +49,7 @@ fetch that quietly produces a different corpus invalidates every number below.
 Refusing to read scores 68%. Any reader reporting plain accuracy on CUAD is reporting
 mostly this, which is why everything below uses **balanced accuracy** instead.
 
-## Finding 2 — what a context window can even see
+## Result 2 — what a context window can even see
 
 | Window | Gold spans kept | |
 |---:|---:|---:|
@@ -61,7 +61,7 @@ mostly this, which is why everything below uses **balanced accuracy** instead.
 
 A 14B model does not read a 52,000-character contract. It reads the front of it.
 
-## Finding 3 — the average is carried by four trivial fields
+## Result 3 — the average is carried by four trivial fields
 
 This is the one worth the repository. Truncation does **not** lose a random 59% of clauses.
 
@@ -89,7 +89,7 @@ the parties, the date. The clauses that do not survive are the ones anyone pays 
 to find. A reader truncating to 8k scores respectably on average while being **blind to
 every commercial term in the contract**.
 
-## Finding 4 — how much of this is just word counting
+## Result 4 — how much of this is just word counting
 
 A detector with no model in it: per category, learn from the training contracts which
 terms distinguish contracts that have the clause from those that do not, then score an
@@ -111,25 +111,6 @@ overfit.
 On test, counting words beats refusing to read by 0.036 accuracy and 0.168 balanced
 accuracy over chance. **That is the floor a model has to clear before it has earned its
 hour on the card.**
-
-## The bug that made this repository wrong for an hour
-
-Three runs of the same code on the same data gave test accuracies of **0.673, 0.668 and
-0.734**.
-
-Cue terms are ranked by log-odds and cut at the top 40. Thousands of terms tie — any term
-appearing in equally many positive and negative contracts gets an identical weight — and
-ties were broken by whatever order the `set` iterated. Python randomises string hashing
-per process, so the top-40 cut fell in a different place on every run.
-
-Fixed by tie-breaking on the term itself, and pinned by
-`test_whole_detector_is_deterministic`. A repository that prints a different number every
-time it runs cannot support a claim about anything.
-
-The same pass found the detector re-tokenising each 52,000-character contract 41 times,
-once per question. Memoising by contract took the fit from over two minutes to five
-seconds; `test_bag_is_memoised_but_still_correct` asserts the speedup did not change the
-answer.
 
 ## What is not measured yet
 
