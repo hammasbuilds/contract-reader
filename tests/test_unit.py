@@ -104,7 +104,6 @@ def _load_script(name):
 
 
 def test_download_resumes_a_part_file(tmp_path, monkeypatch):
-    pytest.importorskip("pyarrow")
     fetch = _load_script("fetch_data")
     payload = b"0123456789" * 1000
     dest = tmp_path / "x.parquet"

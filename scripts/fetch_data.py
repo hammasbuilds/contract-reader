@@ -36,13 +36,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from contractreader.corpus import cuad_path, data_dir  # noqa: E402
 
-try:
-    import pyarrow.parquet as pq
-except ImportError:  # pragma: no cover - exercised by hand
-    raise SystemExit(
-        "fetch_data.py needs pyarrow to read the parquet files: pip install -e .[fetch]"
-    ) from None
-
 CHUNK = 1 << 20
 
 BASE = (
@@ -97,6 +90,12 @@ def download(url: str, dest: Path, attempts: int = 5) -> Path:
 
 
 def rows(cache: Path):
+    try:
+        import pyarrow.parquet as pq
+    except ImportError:
+        raise SystemExit(
+            "fetch_data.py needs pyarrow to read the parquet files: pip install -e .[fetch]"
+        ) from None
     cache.mkdir(parents=True, exist_ok=True)
     for name in PARTS:
         print(f"  {name} ...", end="", flush=True)
