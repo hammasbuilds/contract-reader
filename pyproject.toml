@@ -5,6 +5,10 @@ description = "What a contract reader's score is actually made of, measured on C
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+fetch = ["pyarrow>=14"]
+dev = ["pytest>=8", "ruff>=0.5"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

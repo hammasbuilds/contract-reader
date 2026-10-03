@@ -10,18 +10,19 @@ number every time it runs cannot support a claim about anything.
 from __future__ import annotations
 
 import pytest
+from conftest import NEEDS_CORPUS
 
 from contractreader import corpus, reader, split
 
-SPLIT = split.make()
+pytestmark = NEEDS_CORPUS
 
 
-def test_split_is_by_contract_and_disjoint():
-    assert split.disjoint(SPLIT)
-    assert len(SPLIT.train) + len(SPLIT.val) + len(SPLIT.test) == 510
+def test_split_is_by_contract_and_disjoint(the_split):
+    assert split.disjoint(the_split)
+    assert len(the_split.train) + len(the_split.val) + len(the_split.test) == 510
 
 
-def test_no_contract_appears_in_two_splits_via_its_questions():
+def test_no_contract_appears_in_two_splits_via_its_questions(the_split):
     """The leak this project most needs to avoid.
 
     Every contract is asked 41 questions. Splitting questions at random would
@@ -30,12 +31,12 @@ def test_no_contract_appears_in_two_splits_via_its_questions():
     """
     seen = {}
     for name in ("train", "val", "test"):
-        for q in SPLIT.questions(name):
+        for q in the_split.questions(name):
             assert seen.setdefault(q.contract, name) == name
 
 
-def test_split_is_stable_across_calls():
-    assert split.make().test == SPLIT.test
+def test_split_is_stable_across_calls(the_split):
+    assert split.make().test == the_split.test
 
 
 def test_window_counts_only_answerable():
@@ -83,13 +84,13 @@ def test_bag_is_memoised_but_still_correct():
     assert reader.bag(text) is reader.bag(text)
 
 
-def test_cue_weights_are_deterministic():
+def test_cue_weights_are_deterministic(the_split):
     """Two fits on the same data give the same cues, in the same order.
 
     Guards the tie-break added to the log-odds sort. Without it the top-40 cut
     fell among equal-weight terms in whatever order the set iterated.
     """
-    train = SPLIT.questions("train")
+    train = the_split.questions("train")
     a = reader.CuePresence().fit(train)
     b = reader.CuePresence().fit(train)
     assert a.cues.keys() == b.cues.keys()
@@ -97,8 +98,8 @@ def test_cue_weights_are_deterministic():
         assert a.cues[category].terms == b.cues[category].terms
 
 
-def test_whole_detector_is_deterministic():
-    train, val, test = (SPLIT.questions(n) for n in ("train", "val", "test"))
+def test_whole_detector_is_deterministic(the_split):
+    train, val, test = (the_split.questions(n) for n in ("train", "val", "test"))
     runs = []
     for _ in range(2):
         model = reader.CuePresence().fit(train).tune(val)
@@ -106,19 +107,19 @@ def test_whole_detector_is_deterministic():
     assert runs[0] == runs[1]
 
 
-def test_detector_beats_refusing_to_read():
+def test_detector_beats_refusing_to_read(the_split):
     """On test, not on train. A floor, and an honest one."""
-    model = reader.CuePresence().fit(SPLIT.questions("train")).tune(SPLIT.questions("val"))
-    test = SPLIT.questions("test")
+    model = reader.CuePresence().fit(the_split.questions("train")).tune(the_split.questions("val"))
+    test = the_split.questions("test")
     acc = sum(1 for q in test if model.predict(q) == q.answerable) / len(test)
     always_absent = sum(1 for q in test if not q.answerable) / len(test)
     assert acc > always_absent
 
 
 @pytest.mark.parametrize("name", ["train", "val", "test"])
-def test_every_split_has_both_classes(name):
+def test_every_split_has_both_classes(name, the_split):
     """A split with no answerable questions would make sensitivity undefined
     and the balanced accuracy silently meaningless."""
-    group = SPLIT.questions(name)
+    group = the_split.questions(name)
     assert any(q.answerable for q in group)
     assert any(not q.answerable for q in group)

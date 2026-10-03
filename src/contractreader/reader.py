@@ -184,6 +184,14 @@ class CuePresence:
         return self
 
     def predict(self, question) -> bool:
+        """Whether `question.contract_text` contains a `question.category` clause."""
+        if not hasattr(question, "category") or not isinstance(
+            getattr(question, "contract_text", None), str
+        ):
+            raise TypeError(
+                "predict() needs an object with .category and a str .contract_text "
+                f"(e.g. corpus.Question), got {type(question).__name__}"
+            )
         cues = self.cues.get(question.category)
         if cues is None:
             return False

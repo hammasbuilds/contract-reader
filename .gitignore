@@ -1,10 +1,10 @@
-# CUAD is 43 MB and is a published dataset. scripts/fetch_data.sh pulls it.
-data/cuad.json
-data/master_clauses.csv
+# CUAD is ~40 MB and is a published dataset. scripts/fetch_data.py rebuilds it.
+data/
 
 # Everything else
 .venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
 .ruff_cache/

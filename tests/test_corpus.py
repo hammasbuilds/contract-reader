@@ -8,20 +8,21 @@ real file.
 from __future__ import annotations
 
 import pytest
+from conftest import NEEDS_CORPUS
 
 from contractreader import corpus
 
-QUESTIONS = corpus.load()
+pytestmark = NEEDS_CORPUS
 
 
-def test_corpus_size():
+def test_corpus_size(questions):
     """The counts the README quotes."""
-    assert len(QUESTIONS) == 20_910
+    assert len(questions) == 20_910
     assert len(corpus.contracts()) == 510
     assert len(corpus.categories()) == 41
 
 
-def test_every_contract_is_asked_every_category():
+def test_every_contract_is_asked_every_category(questions):
     """The premise of the abstention task.
 
     If some contracts were asked fewer questions, the 68% unanswerable rate
@@ -29,16 +30,16 @@ def test_every_contract_is_asked_every_category():
     contracts.
     """
     per_contract = {}
-    for q in QUESTIONS:
+    for q in questions:
         per_contract.setdefault(q.contract, set()).add(q.category)
     sizes = {len(v) for v in per_contract.values()}
     assert sizes == {41}
 
 
-def test_answerable_share():
+def test_answerable_share(questions):
     """68% unanswerable, which is the number both degenerate baselines rest on."""
     answerable = corpus.answerable()
-    share = 1 - len(answerable) / len(QUESTIONS)
+    share = 1 - len(answerable) / len(questions)
     assert 0.67 < share < 0.69
 
 
@@ -57,13 +58,13 @@ def test_unanswerable_questions_have_no_spans():
     assert all(not q.answers for q in corpus.unanswerable())
 
 
-def test_category_parsed_from_every_question():
+def test_category_parsed_from_every_question(questions):
     """The category is pulled out of the question text with a regex.
 
     If CUAD ever rephrases its questions, this fails loudly instead of quietly
     lumping everything into 'unknown' and reporting one enormous category.
     """
-    assert not [q for q in QUESTIONS if q.category == "unknown"]
+    assert not [q for q in questions if q.category == "unknown"]
 
 
 @pytest.mark.parametrize(

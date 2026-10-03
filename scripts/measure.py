@@ -148,6 +148,13 @@ def the_floor() -> None:
 
 
 def main() -> None:
+    # The tables use em-dashes; a cp1252 Windows console would print mojibake.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    try:
+        corpus.load()
+    except corpus.CorpusMissingError as exc:
+        raise SystemExit(str(exc)) from None
     the_corpus()
     the_baselines()
     the_window()

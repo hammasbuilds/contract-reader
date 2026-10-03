@@ -22,14 +22,29 @@ is built to measure.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-DATA = Path(__file__).resolve().parents[2] / "data"
-CUAD = DATA / "cuad.json"
-MASTER = DATA / "master_clauses.csv"
+ENV = "CONTRACTREADER_DATA"
+DEFAULT_DATA = Path(__file__).resolve().parents[2] / "data"
+
+
+def data_dir() -> Path:
+    """Where the corpus lives: $CONTRACTREADER_DATA if set, else <repo>/data."""
+    override = os.environ.get(ENV)
+    return Path(override) if override else DEFAULT_DATA
+
+
+def cuad_path() -> Path:
+    return data_dir() / "cuad.json"
+
+
+def available() -> bool:
+    """Whether the real corpus is on disk (tests and demo.py use this to decide)."""
+    return cuad_path().is_file()
 
 # CUAD phrases every question the same way; the category is in quotes.
 _CATEGORY = re.compile(r'related to "([^"]+)"')
@@ -69,18 +84,31 @@ def _category_of(question: str) -> str:
     return found.group(1) if found else "unknown"
 
 
-@lru_cache(maxsize=1)
-def load(path: str | None = None) -> tuple[Question, ...]:
-    target = Path(path) if path else CUAD
-    if not target.exists():
+def load(path: str | os.PathLike[str] | None = None) -> tuple[Question, ...]:
+    """Every question in the corpus. Cached per resolved path."""
+    target = Path(path) if path else cuad_path()
+    return _load(str(target.resolve()))
+
+
+@lru_cache(maxsize=2)
+def _load(target_name: str) -> tuple[Question, ...]:
+    target = Path(target_name)
+    if not target.is_file():
         raise CorpusMissingError(
-            f"{target} is missing. Run scripts/fetch_data.py, which rebuilds it "
-            "from the HuggingFace parquet conversion."
+            f"{target} is missing. Run `python scripts/fetch_data.py` (needs "
+            f"`pip install -e .[fetch]`), or point {ENV} at a directory holding cuad.json."
         )
-    raw = json.loads(target.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(target.read_text(encoding="utf-8"))
+        documents = raw["data"]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ValueError(
+            f"{target} is not a CUAD SQuAD-style JSON file ({exc}). "
+            "Delete it and re-run scripts/fetch_data.py."
+        ) from exc
 
     out: list[Question] = []
-    for document in raw["data"]:
+    for document in documents:
         title = document.get("title", "")
         for paragraph in document["paragraphs"]:
             context = paragraph["context"]

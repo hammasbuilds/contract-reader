@@ -1,6 +1,12 @@
 """Rebuild data/cuad.json from HuggingFace's auto-converted parquet.
 
-    python scripts/fetch_data.py
+    pip install -e .[fetch]          # pyarrow
+    python scripts/fetch_data.py     # writes $CONTRACTREADER_DATA/cuad.json or data/cuad.json
+
+Downloads are resumable: each parquet part is streamed to `<name>.part` under
+`<data>/parquet/`, resumed with an HTTP Range request if interrupted, and only
+renamed into place once complete. `cuad.json` itself is written to a temporary
+file and swapped in atomically, so a crash never leaves a half-written corpus.
 
 CUAD's canonical distribution is `data.zip` in the GitHub repository, which is
 served through a redirect that hands back HTML rather than the archive, and the
@@ -18,17 +24,26 @@ and refuses to write a file that does not match.
 
 from __future__ import annotations
 
-import io
 import json
+import os
 import sys
+import urllib.error
 import urllib.request
 from collections import defaultdict
 from pathlib import Path
 
-import pyarrow.parquet as pq
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-DATA = Path(__file__).resolve().parents[1] / "data"
-OUT = DATA / "cuad.json"
+from contractreader.corpus import cuad_path, data_dir  # noqa: E402
+
+try:
+    import pyarrow.parquet as pq
+except ImportError:  # pragma: no cover - exercised by hand
+    raise SystemExit(
+        "fetch_data.py needs pyarrow to read the parquet files: pip install -e .[fetch]"
+    ) from None
+
+CHUNK = 1 << 20
 
 BASE = (
     "https://huggingface.co/datasets/theatticusproject/cuad-qa/"
@@ -48,24 +63,60 @@ EXPECT_QUESTIONS = 20_910
 EXPECT_CONTRACTS = 510
 
 
-def get(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": "contract-reader"})
-    with urllib.request.urlopen(request, timeout=300) as response:
-        return response.read()
+def download(url: str, dest: Path, attempts: int = 5) -> Path:
+    """Stream `url` to `dest`, resuming a previous `.part` and renaming on completion."""
+    if dest.is_file():
+        return dest
+    part = dest.with_name(dest.name + ".part")
+    for attempt in range(1, attempts + 1):
+        have = part.stat().st_size if part.exists() else 0
+        headers = {"User-Agent": "contract-reader"}
+        if have:
+            headers["Range"] = f"bytes={have}-"
+        request = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                # A server that ignores Range answers 200 with the whole file.
+                mode = "ab" if have and response.status == 206 else "wb"
+                with open(part, mode) as out:
+                    while block := response.read(CHUNK):
+                        out.write(block)
+            os.replace(part, dest)
+            return dest
+        except urllib.error.HTTPError as exc:
+            if exc.code == 416 and have:  # .part already holds the whole file
+                os.replace(part, dest)
+                return dest
+            if attempt == attempts:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
+            if attempt == attempts:
+                raise
+        print(f" (retry {attempt}, resuming)", end="", flush=True)
+    raise RuntimeError("unreachable")
 
 
-def rows():
-    for part in PARTS:
-        print(f"  {part} ...", end="", flush=True)
-        blob = get(f"{BASE}/{part}")
-        table = pq.read_table(io.BytesIO(blob))
+def rows(cache: Path):
+    cache.mkdir(parents=True, exist_ok=True)
+    for name in PARTS:
+        print(f"  {name} ...", end="", flush=True)
+        local = download(f"{BASE}/{name}", cache / name.replace("/", "-"))
+        table = pq.read_table(local)
         print(f" {table.num_rows:,} rows")
         yield from table.to_pylist()
 
 
+def write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def main() -> None:
-    DATA.mkdir(exist_ok=True)
-    print("fetching CUAD parquet from the HuggingFace convert branch")
+    data = data_dir()
+    out = cuad_path()
+    data.mkdir(parents=True, exist_ok=True)
+    print(f"fetching CUAD parquet from the HuggingFace convert branch into {data}")
 
     # The two splits are not shaped the same. `test` is the canonical form:
     # exactly 41 rows per contract, each carrying the whole contract as its
@@ -82,7 +133,7 @@ def main() -> None:
     answers: dict[tuple[str, str], set[str]] = defaultdict(set)
     asked: dict[tuple[str, str], str] = {}
 
-    for row in rows():
+    for row in rows(data / "parquet"):
         title, context = row["title"], row["context"]
         if len(context) > len(longest.get(title, "")):
             longest[title] = context
@@ -118,8 +169,8 @@ def main() -> None:
         )
         raise SystemExit(1)
 
-    OUT.write_text(json.dumps({"version": "cuad-qa", "data": documents}), encoding="utf-8")
-    print(f"wrote {OUT}  ({OUT.stat().st_size / 1e6:.0f} MB)")
+    write_atomic(out, json.dumps({"version": "cuad-qa", "data": documents}))
+    print(f"wrote {out}  ({out.stat().st_size / 1e6:.0f} MB)")
 
 
 if __name__ == "__main__":
