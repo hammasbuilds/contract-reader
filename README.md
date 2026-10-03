@@ -19,7 +19,7 @@ crowdworkers, over 41 categories that matter commercially.
 | Clause categories | 41 |
 | Answerable | 6,702 (32%) |
 | **Unanswerable** | **14,208 (68%)** |
-| Median contract | 52,563 chars |
+| Median contract | 52,563 chars (33,143 on a 2026-10-03 re-fetch, see Result 2) |
 
 Every contract is asked every category, so most questions are about a clause that simply
 is not in that contract. That 68% is not a quirk of the sampling — it is asserted in
@@ -27,10 +27,20 @@ is not in that contract. That 68% is not a quirk of the sampling — it is asser
 really is a substring of its own contract.
 
 ```
-python scripts/fetch_data.py  # rebuild data/cuad.json (38 MB, not in git)
-python scripts/measure.py     # prints every table below
-python -m pytest              # 23 tests, against the real corpus
+pip install -e ".[dev,fetch]"   # stdlib-only package; pyarrow is needed only to fetch
+python -m pytest                # fresh clone: 12 pass, 23 corpus tests skip
+python demo.py                  # runs on a synthetic toy corpus until CUAD is fetched
+python scripts/fetch_data.py    # rebuild data/cuad.json (38 MB, not in git, ~1 min)
+python scripts/measure.py       # prints every table below
+python -m pytest                # with the corpus: 35 pass (~3 min)
+python demo.py --json           # headline numbers as JSON
+python demo.py --contract my_contract.txt   # categories the detector flags in your file
 ```
+
+Set `CONTRACTREADER_DATA=/some/dir` to keep `cuad.json` elsewhere; the fetch, the tests,
+`measure.py` and `demo.py` all honour it. The fetch streams each parquet part to a `.part`
+file, resumes an interrupted download with an HTTP Range request, and writes `cuad.json`
+atomically.
 
 CUAD's canonical `data.zip` now 404s behind an organisation rename, so the fetch rebuilds
 the corpus from HuggingFace's parquet conversion. The two splits are not shaped alike —
@@ -43,10 +53,10 @@ fetch that quietly produces a different corpus invalidates every number below.
 
 | Strategy | Accuracy |
 |---|---:|
-| Answer nothing, ever | **0.681** |
-| Answer something, ever | 0.319 |
+| Answer nothing, ever | **0.679** |
+| Answer something, ever | 0.321 |
 
-Refusing to read scores 68%. Any reader reporting plain accuracy on CUAD is reporting
+Refusing to read scores 68% (14,208 / 20,910; an earlier README said 0.681, which did not match its own counts). Any reader reporting plain accuracy on CUAD is reporting
 mostly this, which is why everything below uses **balanced accuracy** instead.
 
 ## Result 2 — what a context window can even see
@@ -59,7 +69,17 @@ mostly this, which is why everything below uses **balanced accuracy** instead.
 | 32,000 | 4,776 / 6,702 | 71.3% |
 | 64,000 | 5,829 / 6,702 | 87.0% |
 
-A 14B model does not read a 52,000-character contract. It reads the front of it.
+A 14B model does not read a 50,000-character contract. It reads the front of it.
+
+**Re-fetch drift (checked 2026-10-03).** The tables in this README were computed on the
+original fetch. Re-fetching today from the same HuggingFace parquet gives the same 510
+contracts, 20,910 questions and 6,702 answerable ones, and finding 4 reproduces to the
+third decimal, but the deduplicated contract texts differ slightly: the median contract is
+33,143 characters (not 52,563) and the window counts are 2,129 / 2,714 / 3,613 / 4,774 /
+5,834 (31.8 / 40.5 / 53.9 / 71.2 / 87.0%). Per-category "kept by 8k" moves by at most one
+point (Effective Date 84%, Anti-Assignment 7%, Insurance 4%). The 94% vs 20% split in
+finding 3 is unchanged. The originals are kept below; `scripts/measure.py` prints whatever
+your fetch produces.
 
 ## Result 3 — the average is carried by four trivial fields
 
@@ -130,5 +150,7 @@ src/contractreader/corpus.py    CUAD, parsed. 20,910 questions, spans verified
 src/contractreader/split.py     80/15/5 by contract, seeded and stable
 src/contractreader/reader.py    window arithmetic + the model-free cue detector
 scripts/measure.py              every table above
-tests/                          23 tests against the real corpus
+src/contractreader/sample.py    synthetic toy corpus for demo.py and hermetic tests (not CUAD)
+demo.py                         end-to-end demo, --json, --contract FILE
+tests/                          12 hermetic tests + 23 against the real corpus (skip without it)
 ```
