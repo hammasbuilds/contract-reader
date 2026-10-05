@@ -154,3 +154,8 @@ src/contractreader/sample.py    synthetic toy corpus for demo.py and hermetic te
 demo.py                         end-to-end demo, --json, --contract FILE
 tests/                          12 hermetic tests + 23 against the real corpus (skip without it)
 ```
+
+## Licence
+
+Code: MIT, see [LICENSE](LICENSE). CUAD is not committed; `scripts/fetch_data.py`
+downloads it, and it stays under its own licence (CC BY 4.0, per The Atticus Project).
