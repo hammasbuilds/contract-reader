@@ -36,8 +36,10 @@ def the_corpus() -> None:
     print(f"contracts            {len(texts):>7,}")
     print(f"clause categories    {len(corpus.categories()):>7}")
     print(f"answerable           {len(answerable):>7,}  ({len(answerable) / len(questions):.0%})")
-    print(f"unanswerable         {len(questions) - len(answerable):>7,}"
-          f"  ({1 - len(answerable) / len(questions):.0%})")
+    print(
+        f"unanswerable         {len(questions) - len(answerable):>7,}"
+        f"  ({1 - len(answerable) / len(questions):.0%})"
+    )
     print(f"median contract      {int(median(len(t) for t in texts.values())):>7,} chars")
     bad = [q for q in answerable if not q.spans_are_real]
     print(f"spans not in context {len(bad):>7}   <- asserted, not assumed")
@@ -78,11 +80,7 @@ def the_split_of_the_window() -> None:
         by[q.category].append(start + len(q.answers[0]) <= 8_000)
         where[q.category].append(start / max(1, len(q.contract_text)))
 
-    rows = [
-        (sum(k) / len(k), median(where[c]), c, len(k))
-        for c, k in by.items()
-        if len(k) >= 20
-    ]
+    rows = [(sum(k) / len(k), median(where[c]), c, len(k)) for c, k in by.items() if len(k) >= 20]
     rows.sort(reverse=True)
     print(f"{'clause category':<38}{'n':>5}{'median pos':>12}{'kept by 8k':>12}")
     for keep, pos, category, n in rows[:5]:
@@ -109,13 +107,17 @@ def the_floor() -> None:
     train = parts.questions("train")
     val = parts.questions("val")
     test = parts.questions("test")
-    print(f"contracts  train {len(parts.train)}  val {len(parts.val)}  test {len(parts.test)}"
-          f"   (split by contract, never by question)")
+    print(
+        f"contracts  train {len(parts.train)}  val {len(parts.val)}  test {len(parts.test)}"
+        f"   (split by contract, never by question)"
+    )
     print(f"questions  train {len(train):,}  val {len(val):,}  test {len(test):,}")
 
     model = reader.CuePresence().fit(train).tune(val)
-    print(f"\n{'split':<8}{'n':>7}{'accuracy':>11}{'always-absent':>15}{'balanced':>11}"
-          f"{'sens':>8}{'spec':>8}")
+    print(
+        f"\n{'split':<8}{'n':>7}{'accuracy':>11}{'always-absent':>15}{'balanced':>11}"
+        f"{'sens':>8}{'spec':>8}"
+    )
     got = {}
     for name, group in (("train", train), ("val", val), ("test", test)):
         tp = sum(1 for q in group if model.predict(q) and q.answerable)
@@ -127,22 +129,26 @@ def the_floor() -> None:
         base = sum(1 for q in group if not q.answerable) / len(group)
         acc = (tp + tn) / len(group)
         got[name] = (acc, base, (sens + spec) / 2)
-        print(f"{name:<8}{len(group):>7,}{acc:>11.3f}{base:>15.3f}"
-              f"{(sens + spec) / 2:>11.3f}{sens:>8.3f}{spec:>8.3f}")
+        print(
+            f"{name:<8}{len(group):>7,}{acc:>11.3f}{base:>15.3f}"
+            f"{(sens + spec) / 2:>11.3f}{sens:>8.3f}{spec:>8.3f}"
+        )
 
     # Written from the numbers above rather than typed in. An earlier version
     # quoted them by hand and they went stale the first time the detector
     # changed, which is the same failure this repository is about.
     train_acc, test_acc = got["train"][0], got["test"][0]
     t_acc, t_base, t_bal = got["test"]
-    print(f"\n  ^ all three splits on purpose. Train {train_acc:.3f} and test"
-          f" {test_acc:.3f} is the")
-    print(f"    same detector; the {train_acc - test_acc:.3f} gap is what fitting 41"
-          " categories on 408")
+    print(
+        f"\n  ^ all three splits on purpose. Train {train_acc:.3f} and test {test_acc:.3f} is the"
+    )
+    print(
+        f"    same detector; the {train_acc - test_acc:.3f} gap is what fitting 41"
+        " categories on 408"
+    )
     print("    contracts buys you, and quoting the first number would be quoting")
     print("    the overfit.")
-    print(f"    On test, counting words beats refusing to read by"
-          f" {t_acc - t_base:.3f} accuracy")
+    print(f"    On test, counting words beats refusing to read by {t_acc - t_base:.3f} accuracy")
     print(f"    and {t_bal - 0.5:.3f} balanced accuracy over chance. That is the floor a")
     print("    model has to clear before it has earned its hour on the card.")
 

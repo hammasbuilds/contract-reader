@@ -86,8 +86,10 @@ def main() -> None:
     print(f"unanswerable share    {result['unanswerable_share']:.3f}")
     print(f"8k window keeps       {result['window_8k_spans_kept']:.1%} of gold spans")
     t = result["test"]
-    print(f"detector on test      acc {t['accuracy']:.3f}  always-absent {t['always_absent']:.3f}"
-          f"  balanced {t['balanced_accuracy']:.3f}  (n={t['n']:,})")
+    print(
+        f"detector on test      acc {t['accuracy']:.3f}  always-absent {t['always_absent']:.3f}"
+        f"  balanced {t['balanced_accuracy']:.3f}  (n={t['n']:,})"
+    )
     if "your_contract" in result:
         flagged = [c for c, v in result["your_contract"].items() if v]
         print(f"\n{args.contract.name}: detector flags {len(flagged)} categories")

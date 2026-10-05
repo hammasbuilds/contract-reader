@@ -54,9 +54,7 @@ def build(n_contracts: int = 40, seed: int = 0) -> dict:
         qas = [
             {
                 "question": QUESTION.format(c=c),
-                "answers": [
-                    {"text": s, "answer_start": context.find(s)} for s in spans.get(c, [])
-                ],
+                "answers": [{"text": s, "answer_start": context.find(s)} for s in spans.get(c, [])],
             }
             for c in CATEGORIES
         ]

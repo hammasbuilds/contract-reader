@@ -46,6 +46,7 @@ def available() -> bool:
     """Whether the real corpus is on disk (tests and demo.py use this to decide)."""
     return cuad_path().is_file()
 
+
 # CUAD phrases every question the same way; the category is in quotes.
 _CATEGORY = re.compile(r'related to "([^"]+)"')
 
