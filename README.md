@@ -1,102 +1,92 @@
 # contract-reader
 
-> A contract reader that truncates to 8,000 characters sees 41% of the answers — and the 41% is almost entirely the four fields printed on the first page.
+[![ci](https://github.com/hammasbuilds/contract-reader/actions/workflows/ci.yml/badge.svg)](https://github.com/hammasbuilds/contract-reader/actions/workflows/ci.yml)
+![python](https://img.shields.io/badge/python-3.11%2B-blue)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Status:** the model-free half is complete and measured on all 510 contracts. The 14B
-reader is not written yet; the findings below do not need it, and they change what it
-should be asked to do. See [What is not measured yet](#what-is-not-measured-yet).
+We built a measurement of what a contract reader can and cannot see on
+[CUAD](https://github.com/TheAtticusProject/cuad): 510 commercial contracts labelled clause
+by clause by attorneys over 41 categories. It is for anyone building an LLM contract-review
+tool who has to decide how much of a contract to show the model. **A reader that truncates
+to 8,000 characters sees 41% of the answers, and those are almost entirely the four fields
+printed on the first page**; the clauses people pay lawyers to find are mostly cut off.
 
-## The corpus
+## What it does
 
-[CUAD](https://github.com/TheAtticusProject/cuad) — the Contract Understanding Atticus
-Dataset. 510 commercial contracts, labelled clause by clause **by attorneys** rather than
-crowdworkers, over 41 categories that matter commercially.
+- Rebuilds CUAD from Hugging Face's parquet conversion into one file: 510 contracts × 41
+  categories = 20,910 questions, every gold span verified to be a substring of its contract.
+  The fetch refuses to write a corpus of any other shape.
+- Reports the two scores that need no reading (always "absent", always "present"), so every
+  other number can be read against them.
+- Measures, for each context window from 4k to 64k characters, how many gold spans fall
+  inside it, overall and per clause category, with each category's median position.
+- Trains a model-free cue detector per category (terms that separate contracts with the
+  clause from those without), split 80/15/5 **by contract**, and reports train, val and test.
+- `demo.py --contract FILE` runs that detector on your own contract text.
 
-| | |
-|---|---:|
-| Questions | **20,910** |
-| Contracts | 510 |
-| Clause categories | 41 |
-| Answerable | 6,702 (32%) |
-| **Unanswerable** | **14,208 (68%)** |
-| Median contract | 52,563 chars (33,143 on a 2026-10-03 re-fetch, see Result 2) |
+## Sample input / output
 
-Every contract is asked every category, so most questions are about a clause that simply
-is not in that contract. That 68% is not a quirk of the sampling — it is asserted in
-[tests/test_corpus.py](tests/test_corpus.py), along with the fact that every gold span
-really is a substring of its own contract.
+A short hand-written software licence (`contract.txt`, five clauses: grant, renewal,
+assignment, liability cap, governing law) through `python demo.py --contract contract.txt`
+with CUAD fetched:
 
+```text
+corpus                CUAD
+questions / contracts 20,910 / 510
+unanswerable share    0.679
+8k window keeps       40.5% of gold spans
+detector on test      acc 0.689  always-absent 0.653  balanced 0.668  (n=1,066)
+
+contract.txt: detector flags 9 categories
+  - Document Name
+  - License Grant
+  - Most Favored Nation
+  - No-Solicit Of Employees
+  - Non-Transferable License
+  - Parties
+  - Price Restrictions
+  - Renewal Term
+  - Unlimited/All-You-Can-Eat-License
 ```
-pip install -e ".[dev,fetch]"   # stdlib-only package; pyarrow is needed only to fetch
-python -m pytest                # fresh clone: 12 pass, 23 corpus tests skip
-python demo.py                  # runs on a synthetic toy corpus until CUAD is fetched
-python scripts/fetch_data.py    # rebuild data/cuad.json (38 MB, not in git, ~1 min)
-python scripts/measure.py       # prints every table below
-python -m pytest                # with the corpus: 35 pass (~3 min)
-python demo.py --json           # headline numbers as JSON
-python demo.py --contract my_contract.txt   # categories the detector flags in your file
-```
 
-Set `CONTRACTREADER_DATA=/some/dir` to keep `cuad.json` elsewhere; the fetch, the tests,
-`measure.py` and `demo.py` all honour it. The fetch streams each parquet part to a `.part`
-file, resumes an interrupted download with an HTTP Range request, and writes `cuad.json`
-atomically.
+It finds the licence grant, renewal term and header fields, misses anti-assignment,
+liability cap and governing law, and raises three false alarms: what a 0.668
+balanced-accuracy word counter looks like on one contract. That is the floor a model reader
+has to clear.
 
-CUAD's canonical `data.zip` now 404s behind an organisation rename, so the fetch rebuilds
-the corpus from HuggingFace's parquet conversion. The two splits are not shaped alike —
-`test` carries whole contracts, `train` is chunked and augmented — so the script
-deduplicates to one entry per (contract, category) against the longest context. It verifies
-it produced 510 × 41 = 20,910 questions and **refuses to write** anything else, because a
-fetch that quietly produces a different corpus invalidates every number below.
+## Results
 
-## Result 1 — two scores that are not about reading contracts
+From `python scripts/measure.py` on the current Hugging Face fetch (median contract 33,143
+characters).
 
-| Strategy | Accuracy |
-|---|---:|
-| Answer nothing, ever | **0.679** |
-| Answer something, ever | 0.321 |
+**1. Refusing to read scores 0.679.** 14,208 of 20,910 questions (68%) ask about a clause
+that is not in that contract, so plain accuracy mostly measures this. Everything below uses
+balanced accuracy.
 
-Refusing to read scores 68% (14,208 / 20,910; an earlier README said 0.681, which did not match its own counts). Any reader reporting plain accuracy on CUAD is reporting
-mostly this, which is why everything below uses **balanced accuracy** instead.
+**2. What a context window can see:**
 
-## Result 2 — what a context window can even see
-
-| Window | Gold spans kept | |
+| Window (chars) | Gold spans kept | |
 |---:|---:|---:|
-| 4,000 | 2,115 / 6,702 | 31.6% |
-| **8,000** | **2,719 / 6,702** | **40.6%** |
-| 16,000 | 3,603 / 6,702 | 53.8% |
-| 32,000 | 4,776 / 6,702 | 71.3% |
-| 64,000 | 5,829 / 6,702 | 87.0% |
+| 4,000 | 2,129 / 6,702 | 31.8% |
+| **8,000** | **2,714 / 6,702** | **40.5%** |
+| 16,000 | 3,613 / 6,702 | 53.9% |
+| 32,000 | 4,774 / 6,702 | 71.2% |
+| 64,000 | 5,834 / 6,702 | 87.0% |
 
-A 14B model does not read a 50,000-character contract. It reads the front of it.
-
-**Re-fetch drift (checked 2026-10-03).** The tables in this README were computed on the
-original fetch. Re-fetching today from the same HuggingFace parquet gives the same 510
-contracts, 20,910 questions and 6,702 answerable ones, and finding 4 reproduces to the
-third decimal, but the deduplicated contract texts differ slightly: the median contract is
-33,143 characters (not 52,563) and the window counts are 2,129 / 2,714 / 3,613 / 4,774 /
-5,834 (31.8 / 40.5 / 53.9 / 71.2 / 87.0%). Per-category "kept by 8k" moves by at most one
-point (Effective Date 84%, Anti-Assignment 7%, Insurance 4%). The 94% vs 20% split in
-finding 3 is unchanged. The originals are kept below; `scripts/measure.py` prints whatever
-your fetch produces.
-
-## Result 3 — the average is carried by four trivial fields
-
-This is the one worth the repository. Truncation does **not** lose a random 59% of clauses.
+**3. The average is carried by four trivial fields.**
 
 | Clause category | n | Median position | Kept by 8k |
 |---|---:|---:|---:|
 | Document Name | 510 | 0% | **100%** |
 | Parties | 509 | 1% | 98% |
 | Agreement Date | 470 | 1% | 93% |
-| Effective Date | 390 | 1% | 83% |
+| Effective Date | 390 | 1% | 84% |
 | … | | | |
-| Insurance | 166 | 61% | 5% |
-| **Cap On Liability** | 275 | 67% | **5%** |
-| **Change Of Control** | 121 | 68% | **6%** |
-| **Anti-Assignment** | 374 | 79% | **6%** |
-| **Governing Law** | 437 | 84% | **8%** |
+| **Governing Law** | 437 | 83% | **8%** |
+| **Anti-Assignment** | 374 | 79% | **7%** |
+| **Change Of Control** | 121 | 67% | **6%** |
+| **Cap On Liability** | 275 | 69% | **5%** |
+| Insurance | 166 | 61% | 4% |
 | Uncapped Liability | 111 | 69% | 2% |
 
 | | n | Kept by 8k |
@@ -104,19 +94,10 @@ This is the one worth the repository. Truncation does **not** lose a random 59% 
 | The four header fields | 1,879 | **94%** |
 | Every other category | 4,823 | **20%** |
 
-The clauses that survive truncation are the ones you could find with your eye: the title,
-the parties, the date. The clauses that do not survive are the ones anyone pays a lawyer
-to find. A reader truncating to 8k scores respectably on average while being **blind to
-every commercial term in the contract**.
+An 8k reader scores respectably on average while missing nearly every commercial term, so
+a model reader should be compared against a retrieval step that chooses which 8k to show it.
 
-## Result 4 — how much of this is just word counting
-
-A detector with no model in it: per category, learn from the training contracts which
-terms distinguish contracts that have the clause from those that do not, then score an
-unseen contract by how many of those terms it contains.
-
-Split **by contract, never by question** — every contract is asked 41 questions, so
-splitting questions at random would put the same contract text on both sides of the line.
+**4. How much is word counting.** The cue detector, split by contract (408 / 76 / 26):
 
 | Split | n | Accuracy | Always-absent | Balanced | Sens | Spec |
 |---|---:|---:|---:|---:|---:|---:|
@@ -124,38 +105,43 @@ splitting questions at random would put the same contract text on both sides of 
 | val | 3,116 | 0.730 | 0.682 | 0.713 | 0.664 | 0.761 |
 | **test** | **1,066** | **0.689** | 0.653 | **0.668** | 0.603 | 0.734 |
 
-All three splits are reported on purpose. The 0.129 train-to-test gap is what fitting 41
-categories on 408 contracts buys you, and quoting the train number would be quoting the
-overfit.
-
 On test, counting words beats refusing to read by 0.036 accuracy and 0.168 balanced
-accuracy over chance. **That is the floor a model has to clear before it has earned its
-hour on the card.**
+accuracy over chance. Everything here is clause *presence*, not span extraction.
 
-## What is not measured yet
+## Tech stack
 
-**The 14B reader.** Not written. Findings 2 and 3 say what it should be asked, and it is
-not "read this contract": at 8k it cannot see the clauses that matter, so the honest
-comparison is against a retrieval step that picks which 8k to show it. Measuring a
-truncating reader against these numbers would mostly measure truncation.
+- Python 3.11+; the package is standard library only
+- PyArrow (only to fetch CUAD's parquet and build `data/cuad.json`)
+- pytest, ruff, GitHub Actions (Ubuntu and Windows)
 
-**Span extraction.** Everything here is the presence question — *is this clause in this
-contract* — not *which words are it*. Presence is the half that the 68% base rate makes
-treacherous, so it is the half worth doing first.
+## Run it
 
-## Layout
+```bash
+git clone https://github.com/hammasbuilds/contract-reader
+cd contract-reader
+pip install -e ".[dev,fetch]"
+
+python -m pytest -q                 # fresh clone: hermetic tests pass, corpus tests skip
+python demo.py                      # runs on a small built-in toy corpus until CUAD is fetched
+python scripts/fetch_data.py        # build data/cuad.json (38 MB, not in git, ~1 min)
+python scripts/measure.py           # every table above
+python demo.py --json               # headline numbers as JSON
+python demo.py --contract my_contract.txt
+```
+
+Set `CONTRACTREADER_DATA=/some/dir` to keep `cuad.json` elsewhere. The fetch resumes an
+interrupted download with HTTP Range requests and writes `cuad.json` atomically.
 
 ```
-src/contractreader/corpus.py    CUAD, parsed. 20,910 questions, spans verified
+src/contractreader/corpus.py    CUAD parsed: 20,910 questions, spans verified
 src/contractreader/split.py     80/15/5 by contract, seeded and stable
 src/contractreader/reader.py    window arithmetic + the model-free cue detector
+src/contractreader/sample.py    small toy corpus for demo.py and hermetic tests (not CUAD)
 scripts/measure.py              every table above
-src/contractreader/sample.py    synthetic toy corpus for demo.py and hermetic tests (not CUAD)
 demo.py                         end-to-end demo, --json, --contract FILE
-tests/                          12 hermetic tests + 23 against the real corpus (skip without it)
 ```
 
 ## Licence
 
 Code: MIT, see [LICENSE](LICENSE). CUAD is not committed; `scripts/fetch_data.py`
-downloads it, and it stays under its own licence (CC BY 4.0, per The Atticus Project).
+downloads it, and it stays under its own licence (CC BY 4.0, The Atticus Project).
